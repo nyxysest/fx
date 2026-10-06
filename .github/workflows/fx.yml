@@ -1,0 +1,33 @@
+name: fx — validate & refresh rates
+
+# هر ۱۵ دقیقه: market.json ریپوی اصلی (itsyebekhe/usd) را می‌خواند،
+# اعتبارسنجی می‌کند و فیلدهای خراب/کهنه را از منبع رسمی (alanchand/oilprice)
+# مستقیم می‌گیرد. خروجی: market.json همین ریپو — هم‌ساختار با ریپوی اصلی.
+on:
+  schedule:
+    - cron: '3,18,33,48 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  TZ: Asia/Tehran
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install --upgrade pip -q
+          pip install -q requests beautifulsoup4 lxml
+      - run: python fetch_fx.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add market.json
+          git diff --staged --quiet && echo "No changes." || (git commit -m "chore(auto): validate + refresh rates [skip ci]" && git push)
