@@ -34,6 +34,8 @@ RANGES = {
     "coin_gram": (5_000_000, 150_000_000),
     "gold_ounce": (1_000, 10_000),   # دلار
     "oil": (20, 250),                # دلار
+    "trx": (20_000, 400_000),        # ترون — تومان
+    "ton": (50_000, 5_000_000),      # گرم (TON) — تومان
 }
 MAX_AGE_MIN = 120  # دیتای قدیمی‌تر از ۲ ساعت = کهنه
 
@@ -105,6 +107,38 @@ def fetch_alanchand_jsonld(url, want):
             for key, needle in want:
                 if needle in name and key not in out:
                     out[key] = val_toman
+    return out
+
+
+def fetch_crypto(usd_toman=None):
+    """قیمت کریپتو به تومان: اول صرافی والکس (TRXTMN/TONTMN)، اگر نبود
+    قیمت دلاری CoinGecko × نرخ دلار بازار."""
+    out = {}
+    try:
+        import urllib.request as _u
+        def _j(url):
+            rq = _u.Request(url, headers=UA)
+            return json.loads(_u.urlopen(rq, timeout=15).read())
+        try:
+            w = _j("https://api.wallex.ir/v1/markets")
+            sym = w.get("result", {}).get("symbols", {})
+            for base, key in (("TRXTMN", "trx"), ("TONTMN", "ton")):
+                lp = num(sym.get(base, {}).get("stats", {}).get("lastPrice"))
+                if lp and lp > 0:
+                    out[key] = int(round(lp))
+        except Exception as e:
+            print(f"  wallex fail: {e}")
+    except Exception as e:
+        print(f"  crypto fail: {e}")
+    if usd_toman:
+        try:
+            cg = json.loads(get("https://api.coingecko.com/api/v3/simple/price?ids=tron,the-open-network&vs_currencies=usd"))
+            if "trx" not in out and num(cg.get("tron", {}).get("usd")):
+                out["trx"] = int(round(cg["tron"]["usd"] * usd_toman))
+            if "ton" not in out and num(cg.get("the-open-network", {}).get("usd")):
+                out["ton"] = int(round(cg["the-open-network"]["usd"] * usd_toman))
+        except Exception as e:
+            print(f"  coingecko fail: {e}")
     return out
 
 
@@ -187,6 +221,18 @@ def main():
                             fixed.append(key)
     else:
         print("[fx] all upstream fields valid and fresh — no direct fetch")
+
+    # کریپتو (ترون/گرم) همیشه از صرافی تازه می‌گیریم — آپستریم این فیلدها را ندارد
+    try:
+        crypto = fetch_crypto(market.get("usd") if valid("usd", market.get("usd")) else None)
+        for key in ("trx", "ton"):
+            if valid(key, crypto.get(key)):
+                if market.get(key) != crypto[key]:
+                    market[key] = crypto[key]
+                    if key not in fixed:
+                        fixed.append(key)
+    except Exception as e:
+        print(f"[fx] crypto merge fail: {e}")
 
     now = datetime.now(TEHRAN)
     jy, jm, jd = gregorian_to_jalali(now.year, now.month, now.day)
