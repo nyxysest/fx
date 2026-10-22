@@ -111,34 +111,47 @@ def fetch_alanchand_jsonld(url, want):
 
 
 def fetch_crypto(usd_toman=None):
-    """قیمت کریپتو به تومان: اول صرافی والکس (TRXTMN/TONTMN)، اگر نبود
-    قیمت دلاری CoinGecko × نرخ دلار بازار."""
-    out = {}
-    try:
-        import urllib.request as _u
-        def _j(url):
-            rq = _u.Request(url, headers=UA)
-            return json.loads(_u.urlopen(rq, timeout=15).read())
+    """قیمت کریپتو به تومان با استعلام از چندین صرافی خارجی معتبر:
+    Kraken، MEXC، Gate.io، CoinGecko (میانه بین‌النقل و برون‌رفتی).
+    به تومان = قیمت دلاری (میانه) × نرخ دلار بازارسنجی‌شده.
+    تعداد صرافی‌های سالم در فیلد crypto_sources ثبت می‌شود."""
+    def _jget(url):
+        req = urllib.request.Request(url, headers=UA)
+        return json.loads(urllib.request.urlopen(req, timeout=15).read())
+
+    per_src = {"trx": {}, "ton": {}}
+    for name, url, path in [
+        ("kraken", "https://api.kraken.com/0/public/Ticker?pair=TRXUSD", ("result", "TRXUSD", "c")),
+        ("kraken_tonusdt", "https://api.kraken.com/0/public/Ticker?pair=TONUSDT", ("result", "TONUSDT", "c")),
+        ("kraken_tonusd", "https://api.kraken.com/0/public/Ticker?pair=TONUSD", ("result", "TONUSD", "c")),
+        ("mexc", "https://api.mexc.com/api/v3/ticker/price?symbol=TRXUSDT", ("price",)),
+        ("gate", "https://api.gateio.ws/api/v4/spot/tickers?currency_pair=TRX_USDT", (0, "last")),
+        ("coingecko_trx", "https://api.coingecko.com/api/v3/simple/price?ids=tron&vs_currencies=usd", ("tron", "usd")),
+        ("coingecko_ton", "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd", ("the-open-network", "usd")),
+    ]:
+        coin = "trx" if name in ("kraken", "mexc", "gate", "coingecko_trx") else "ton"
         try:
-            w = _j("https://api.wallex.ir/v1/markets")
-            sym = w.get("result", {}).get("symbols", {})
-            for base, key in (("TRXTMN", "trx"), ("TONTMN", "ton")):
-                lp = num(sym.get(base, {}).get("stats", {}).get("lastPrice"))
-                if lp and lp > 0:
-                    out[key] = int(round(lp))
+            d = _jget(url)
+            for p in path:
+                d = d[p]
+            v = num(d)
+            if v and v > 0:
+                per_src[coin][name] = v
         except Exception as e:
-            print(f"  wallex fail: {e}")
-    except Exception as e:
-        print(f"  crypto fail: {e}")
-    if usd_toman:
-        try:
-            cg = json.loads(get("https://api.coingecko.com/api/v3/simple/price?ids=tron,the-open-network&vs_currencies=usd"))
-            if "trx" not in out and num(cg.get("tron", {}).get("usd")):
-                out["trx"] = int(round(cg["tron"]["usd"] * usd_toman))
-            if "ton" not in out and num(cg.get("the-open-network", {}).get("usd")):
-                out["ton"] = int(round(cg["the-open-network"]["usd"] * usd_toman))
-        except Exception as e:
-            print(f"  coingecko fail: {e}")
+            print(f"  {name} fail: {e}")
+
+    out, src_count = {}, {}
+    for coin, sources in per_src.items():
+        prices = list(sources.values())
+        if not prices:
+            continue
+        med = sorted(prices)[len(prices) // 2]
+        good = [p for p in prices if abs(p - med) / med <= 0.05] or [med]
+        usd_price = sum(good) / len(good)
+        if usd_toman:
+            out[coin] = int(round(usd_price * usd_toman))
+        src_count[coin] = len(good)
+    out["crypto_sources"] = src_count
     return out
 
 
@@ -222,7 +235,7 @@ def main():
     else:
         print("[fx] all upstream fields valid and fresh — no direct fetch")
 
-    # کریپتو (ترون/گرم) همیشه از صرافی تازه می‌گیریم — آپستریم این فیلدها را ندارد
+    # کریپتو (ترون/گرم) با استعلام چند صرافی خارجی؛ به تومان × نرخ دلارِ تازهٔ بازارسنجی
     try:
         crypto = fetch_crypto(market.get("usd") if valid("usd", market.get("usd")) else None)
         for key in ("trx", "ton"):
@@ -231,6 +244,7 @@ def main():
                     market[key] = crypto[key]
                     if key not in fixed:
                         fixed.append(key)
+        market["crypto_sources"] = crypto.get("crypto_sources", {})
     except Exception as e:
         print(f"[fx] crypto merge fail: {e}")
 
