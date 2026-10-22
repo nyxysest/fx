@@ -47,19 +47,19 @@
   "pkr": 991,
   "gold_ounce": 4024.27,
   "oil": "99.47",
-  "updated_at": "2026-10-23 01:48:25",
+  "updated_at": "2026-10-23 02:56:33",
   "date": "2026-10-23",
   "date_shamsi": "1405/08/01",
   "date_shamsi_full": "۱ آبان ۱۴۰۵",
-  "time": "01:48",
-  "trx": 89963,
-  "ton": 361940,
+  "time": "02:56",
+  "trx": 90007,
+  "ton": 359198,
   "crypto_sources": {
     "trx": 3,
     "ton": 1
   },
   "upstream_updated_at": "2026-10-23 01:28:11",
-  "updated_iso": "2026-10-23T01:48:25.198259+03:30",
-  "updated": "2026-10-23 01:48",
+  "updated_iso": "2026-10-23T02:56:33.354977+03:30",
+  "updated": "2026-10-23 02:56",
   "source": "itsyebekhe/usd (validated + refreshed)"
 }
